@@ -31,7 +31,6 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -45,6 +44,13 @@
 #include <time.h>
 #include <errno.h>
 
+#if defined(__APPLE__)
+#include "fakepoll.h"
+typedef int socklen_t;
+#else
+#include <poll.h>
+#endif
+
 #if !defined(__svr4__)
 extern char *__progname;
 #else
@@ -52,7 +58,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.21 2002/11/18 16:48:33 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.22 2002/12/23 06:20:42 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -79,7 +85,7 @@ FILE	*flog;			/* log file */
 
 char	*writep;		/* write port as string */
 char	readp[16];		/* read port as string */
-char	*mhost = "localhost";	/* host in port forwards */
+char	*mhost = "127.0.0.1";	/* host in port forwards */
 char	*env_port;		/* port spec'd in environment */
 int	poll_time = POLL_TIME;	/* default connection poll time */
 double	gate_time = GATE_TIME;	/* time to "make it out of the gate" */

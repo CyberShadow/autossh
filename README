@@ -1,5 +1,5 @@
 
-autossh Version 1.2b
+autossh Version 1.2c
 --------------------
 
 Usage
@@ -141,6 +141,7 @@ Select the makefile that matches your system:
        Makefile.bsd	 - OpenBSD, FreeBSD, NetBSD
        Makefile.linux	 - Linux
        Makefile.solaris	 - Solaris
+       Makefile.apple    - MacOS X (aka Darwin)
 
 You should check that SSH in the Makefile points to the location
 of the ssh binary on your system. Then run make with the appropriate 

@@ -1,4 +1,11 @@
 
+Version 1.2c
+
+- use Marcus Friedl's suggestion to simply connect to "127.0.0.1" 
+  rather than "localhost", as not really using IPv6 anyway. And this
+  gets rid of annoying ipv6 localhost message on Solaris at least.
+- support for MacOS X using Greg Parker's fakepoll.
+
 Version 1.2b
 
 (Thanks to Simon Easter for bug reports and trials)

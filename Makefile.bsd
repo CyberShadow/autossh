@@ -4,7 +4,7 @@
 # $Id: Makefile.src,v 1.5 2002/05/02 13:48:16 harding Exp harding $
 #
 
-VER=1.2b
+VER=1.2c
 
 SSH=		/usr/bin/ssh
 PREFIX?=	/usr/local
