@@ -1,10 +1,10 @@
 #
 # Adjust SSH below to suit.
 #
-# $Id: Makefile.src,v 1.7 2003/09/30 17:47:21 harding Exp harding $
+# $Id: Makefile.src,v 1.8 2004/02/19 17:54:10 harding Exp $
 #
 
-VER=1.2e
+VER=1.2f
 
 SSH=		/usr/local/bin/ssh
 PREFIX=		/usr/local

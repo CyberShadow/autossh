@@ -1,4 +1,13 @@
 
+Version 1.2f
+
+- by popular request, support the -f flag by doing the fork/background 
+  ourselves, and not passing the flag to ssh (thanks to Dan Christensen
+  for prodding me into it)
+- change timeout to from 5000 to 15000 ms to deal with reported issues
+  with high-latency links; unused var removal; and man page typo (thanks
+  to Michael Shields)
+
 Version 1.2e
 
 - check for attempt to use -f flag; exit as error

@@ -17,9 +17,9 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $Id: autossh.1,v 1.6 2003/09/30 16:48:14 harding Exp $
+.\" $Id: autossh.1,v 1.8 2004/02/19 17:35:06 harding Exp $
 .\"
-.Dd May 6, 2002
+.Dd Jan 23, 2004
 .Dt AUTOSSH 1
 .Os
 .Sh NAME
@@ -28,6 +28,7 @@
 .Sh SYNOPSIS
 .Nm autossh
 .Op Fl M Ar port
+.Op Fl f
 .Ar [SSH_OPTIONS]
 .Sh DESCRIPTION
 .Nm
@@ -37,7 +38,7 @@ necessary should it die or stop passing traffic.
 The original idea and the mechanism were from rstunnel (Reliable SSH
 Tunnel). With version 1.2 of
 .Nm
-the method changes: 
+the method changed: 
 .Nm
 uses ssh to
 construct a loop of ssh forwardings (one from local to remote, one
@@ -151,6 +152,17 @@ will set up forwards so that it can send data on port
 .Pp
 Setting the port to 0 turns the monitoring function off, and autossh
 will only restart ssh upon ssh's exit.
+.It Fl f
+Causes autossh to drop to the background before running ssh. The 
+.Fl f 
+flag is stripped from arguments passed to ssh. Note that there is a crucial
+a difference between the
+.Fl f 
+with autossh, and
+.Fl f
+with ssh: when used with
+.Nm
+ssh will be unable to ask for passwords or passphrases.
 .It Fl V 
 causes 
 .Nm 
@@ -176,9 +188,9 @@ Specifies that
 .Nm
 should use the named log file, rather than syslog.
 .It Ev AUTOSSH_DEBUG
-If set this variable is set, the logging level is set to to LOG_DEBUG, 
-and if the operating system supports
-it, syslog is set to duplicate log entries to stderr.
+If this variable is set, the logging level is set to to LOG_DEBUG, and
+if the operating system supports it, syslog is set to duplicate log
+entries to stderr.
 .It Ev AUTOSSH_PORT
 Sets the connection monitoring port. Mostly in case ssh
 appropriates -M at some time. But because of this possible use, 

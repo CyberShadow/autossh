@@ -1,10 +1,39 @@
 
-autossh Version 1.2e
+autossh Version 1.2f
 --------------------
+
+Building and Installing Autossh
+--------------------------------
+
+The makefiles assume you're using gcc. If not, you will have to
+change some flags.
+
+Select the makefile that matches your system:
+
+       Makefile.bsd	 - OpenBSD, FreeBSD, NetBSD
+       Makefile.linux	 - Linux
+       Makefile.solaris	 - Solaris
+       Makefile.apple    - MacOS X (aka Darwin)
+       Makefile.aix      - AIX >= 4.3
+
+You should check that SSH in the Makefile points to the location
+of the ssh binary on your system. Then run make with the appropriate 
+file, for example:
+
+     make -f Makefile.bsd
+
+Copy the resulting autossh binary to where you'd like it. Use
+
+     make -f Makefile.bsd allclean
+
+to clean up after.
+
+Look at autossh.host for an example wrapper script.
+
 
 Usage
 -----
-	autossh -M <port> [SSH OPTIONS]
+	autossh -M <port> [-f] [SSH OPTIONS]
 
 Description
 -----------
@@ -13,12 +42,12 @@ autossh is a program to start a copy of ssh and monitor it, restarting
 it as necessary should it die or stop passing traffic.
 
 The original idea and the mechanism were from rstunnel (Reliable SSH
-Tunnel). With this version the method changes: autossh uses ssh to
+Tunnel). With version 1.2 the method changed: autossh now uses ssh to
 construct a loop of ssh forwardings (one from local to remote, one
 from remote to local), and then sends test data that it expects to
 get back. (The idea is thanks to Terrence Martin.)
 
-autossh has only two arguments of its own:
+autossh has only three arguments of its own:
 
  -M <port>, to specify the base monitoring port to use. 
 
@@ -32,7 +61,13 @@ autossh has only two arguments of its own:
 	-M 0 will turn the monitoring off, and autossh will only
 	restart ssh on ssh exit.
 
- -V to have autossh display its version and exit.
+ -f     Causes autossh to drop to the background before running ssh. The
+        -f flag is stripped from arguments passed to ssh. Note that there
+        is a crucial a difference between the -f with autossh, and -f
+        with ssh: when used with autossh, ssh will be *unable* to ask for
+        passwords or passphrases.
+
+ -V     to have autossh display its version and exit.
 
 All other arguments are passed to ssh. There are a number of
 other settings, but these are all controlled through environment
@@ -136,35 +171,6 @@ Logging and Syslog
 autossh logs to syslog using the LOG_USER facility. Your syslog may
 have to be configured to accept messages for this facility. This is
 usually done in /etc/syslog.conf.
-
-
-BUILDING AND INSTALLING AUTOSSH
---------------------------------
-
-The makefiles assume you're using gcc. If not, you will have to
-change some flags.
-
-Select the makefile that matches your system:
-
-       Makefile.bsd	 - OpenBSD, FreeBSD, NetBSD
-       Makefile.linux	 - Linux
-       Makefile.solaris	 - Solaris
-       Makefile.apple    - MacOS X (aka Darwin)
-       Makefile.aix      - AIX >= 4.3
-
-You should check that SSH in the Makefile points to the location
-of the ssh binary on your system. Then run make with the appropriate 
-file, for example:
-
-     make -f Makefile.bsd
-
-Copy the resulting autossh binary to where you'd like it. Use
-
-     make -f Makefile.bsd allclean
-
-to clean up after.
-
-Look at autossh.host for an example wrapper script.
 
 -- 
 Kudos and raspberries to harding [at] motd.ca

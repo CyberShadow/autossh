@@ -4,7 +4,7 @@
  *
  * 	From the example of rstunnel.
  *
- * Copyright (c) Carson Harding, 2002,2003.
+ * Copyright (c) Carson Harding, 2002,2003,2004.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,6 +50,19 @@ typedef int socklen_t;
 #include <poll.h>
 #endif
 
+#if defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#define HAVE_SETPROCTITLE
+#endif
+
+#if defined(__svr4__) && !defined(__aix__)
+#ifndef _PATH_DEVNULL
+#define _PATH_DEVNULL "/dev/null"
+#endif
+#include "daemon.h"
+#else
+#define HAVE_DAEMON_FUNC
+#endif
+
 #if !defined(__svr4__) && !defined(__aix__)
 extern char *__progname;
 #else
@@ -57,7 +70,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.26 2003/09/30 16:50:19 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.33 2004/02/19 17:53:50 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -66,8 +79,8 @@ const char *rcsid = "$Id: autossh.c,v 1.26 2003/09/30 16:50:19 harding Exp $";
 #define POLL_TIME	600	/* 10 minutes default */
 #define GATE_TIME	30	/* 30 seconds default */
 #define TIMEO_IO	1	/* read/write timeout (secs) */
-#define TIMEO_POLLA	5000	/* poll on accept() timeout (msecs) */
-#define TIMEO_POLLIO	5000	/* poll on net io (msecs) */
+#define TIMEO_POLLA	15000	/* poll on accept() timeout (msecs) */
+#define TIMEO_POLLIO	15000	/* poll on net io (msecs) */
 #define MAX_CONN_TRIES	3	/* how many attempts */
 
 #define P_CONTINUE	0	/* continue monitoring */
@@ -101,8 +114,10 @@ int	cchild;			/* current child */
 volatile sig_atomic_t	dolongjmp;
 sigjmp_buf jumpbuf;
 
+void	usage(void);
 void	get_env_args(void);
 void	add_arg(char *s);
+void	strip_arg(char *arg, char ch);
 void	ssh_run(int sock, char **argv);
 int	ssh_watch(int sock);
 int	ssh_wait(int options);
@@ -117,12 +132,15 @@ void	xerrlog(int level, char *fmt, ...);
 void	doerrlog(int level, char *fmt, va_list ap);
 char	*timestr(void);
 void	sig_catch(int sig);
+#if !defined(HAVE_DAEMON_FUNC)
+int	daemon(int nochdir, int noclose);
+#endif
 
 void
 usage(void)
 {
 	fprintf(stderr, 
-	    "usage: %s -M monitor_port [SSH_OPTIONS]\n", 
+	    "usage: %s -M monitor_port [-f] [SSH_OPTIONS]\n", 
 	    __progname);
 }
 
@@ -138,6 +156,7 @@ main(int argc, char **argv)
 
 	int	sock;
 	int	done_fwds = 0;
+	int	runasdaemon = 0;
 
 #if defined(__svr4__) || defined(__aix__)
 	__progname = "autossh";
@@ -164,10 +183,7 @@ main(int argc, char **argv)
 			exit(0);
 			break;
 		case 'f':
-			fprintf(stderr, 
-			    "error: %s is not compatible with "
-			    "the ssh \"-f\" flag\n", __progname);
-			exit(1);
+			runasdaemon = 1;
 			break;
 		case '?':
 			usage();
@@ -233,7 +249,7 @@ main(int argc, char **argv)
 #endif
 
 	/*
-	 * Build a new arg list, skipping -M and inserting 
+	 * Build a new arg list, skipping -f, -M and inserting 
 	 * port forwards.
 	 */
 	add_arg(ssh_path);
@@ -255,7 +271,9 @@ main(int argc, char **argv)
 				done_fwds = 1;
 			}
 			continue;
-		} 
+		}
+		/* look for -f in option args and strip out */
+		strip_arg(argv[i], 'f');
 		add_arg(argv[i]);
 	}
 
@@ -268,6 +286,13 @@ main(int argc, char **argv)
 		sock = conn_listen(mhost, readp);
 		/* set close-on-exec */
 		(void)fcntl(sock, F_SETFD, 1);
+	}
+
+	if (runasdaemon) {
+		if (daemon(0, 0) == -1) {
+			xerrlog(LOG_ERR, "run as daemon failed: %s", 
+			    strerror(errno));
+		}
 	}
 
 	ssh_run(sock, newav);
@@ -292,6 +317,8 @@ add_arg(char *s)
 	static	size_t newamax = START_AV_SZ;
 
 	len = strlen(s);
+	if (len == 0)
+		return;
 
 	if (!newav) {
 		newav = malloc(START_AV_SZ * sizeof(char *));
@@ -310,6 +337,28 @@ add_arg(char *s)
 	newav[newac++] = p;
 	newav[newac] = NULL;
 	
+	return;
+}
+
+/*
+ * strip an argument option from an option string; strings that
+ * end up with just a '-' become zero length (add_arg() will
+ * skip them). An option that enters as '-' is untouched.
+ */
+void
+strip_arg(char *arg, char ch)
+{
+	char *f;
+
+	if (arg[0] == '-' && arg[1] != '\0') {
+		f = arg;
+		while ((f = strchr(f, ch)) != NULL)
+			(void)strcpy(f, f+1);
+		/* left with "-" alone? then truncate */
+		if (arg[1] == '\0')
+			arg[0] = '\0';
+	}
+
 	return;
 }
 
@@ -437,7 +486,7 @@ ssh_watch(int sock)
 	int	val;
 	static	int	secs_left;
 
-#if defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#if defined(HAVE_PROCTITLE)
 	setproctitle("parent of %d (%d)", 
 	    (int)cchild, start_count);
 #endif
@@ -720,7 +769,6 @@ conn_test(int sock, char *host, char *write_port)
 	struct sockaddr cliaddr;
 	struct	pollfd	pfd[2];		/* poll fds */
 	int	ntopoll;		/* # fds to poll */
-	struct	timeval tv;		/* timeouts: - read()/write() */
 	int	timeo_polla;		/*           - accept()       */
 	int	timeo_pollio;		/*           - network io     */
 	int	rd, wd;			/* read and write descriptors */
@@ -737,8 +785,6 @@ conn_test(int sock, char *host, char *write_port)
 	rval = 0;			/* default return value */
 	tries = 0;			/* number of attempts */
 
-	tv.tv_sec    = TIMEO_IO;	/* timeout for read()/write() */
-	tv.tv_usec   = 0;
 	timeo_polla  = TIMEO_POLLA;	/* timeout value for accept() */
 	timeo_pollio = TIMEO_POLLIO;	/* timeout value for net io */
 
