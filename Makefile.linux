@@ -1,13 +1,14 @@
 #
 # Adjust SSH below to suit.
 #
-# $Id: Makefile.src,v 1.12 2004/07/19 16:49:19 harding Exp harding $
+# $Id: Makefile.src,v 1.18 2005/03/23 02:05:12 harding Exp $
 #
 
-VER=1.2g
+VER=1.3
 
 SSH=		/usr/bin/ssh
 PREFIX?=	/usr/local
+MAN_PREFIX?=	/usr/local
 
 CFLAGS=		-Wall -D"SSH_PATH=\"$(SSH)\""\
 		-D"VER=\"$(VER)\""
@@ -31,16 +32,16 @@ allclean:	clean
 install:	$(TARGET)
 		mkdir -p -m 755 ${PREFIX}/bin
 		mkdir -p -m 755 ${PREFIX}/share/doc/autossh
-		mkdir -p -m 755 ${PREFIX}/share/examples/autossh
-		mkdir -p -m 755 ${PREFIX}/man/man1
+		mkdir -p -m 755 ${PREFIX}/share/doc/autossh/examples
+		mkdir -p -m 755 ${MAN_PREFIX}/man/man1
 		cp $(TARGET) ${PREFIX}/bin
 		cp CHANGES README ${PREFIX}/share/doc/autossh
-		cp autossh.host ${PREFIX}/share/examples/autossh
-		cp rscreen ${PREFIX}/share/examples/autossh
-		cp autossh.1 ${PREFIX}/man/man1
+		cp autossh.host ${PREFIX}/share/doc/autossh/examples
+		cp rscreen ${PREFIX}/share/doc/autossh/examples
+		cp autossh.1 ${MAN_PREFIX}/man/man1
 		chmod 755 ${PREFIX}/bin/$(TARGET)
 		chmod 644 ${PREFIX}/share/doc/autossh/CHANGES
 		chmod 644 ${PREFIX}/share/doc/autossh/README
-		chmod 644 ${PREFIX}/share/examples/autossh/autossh.host 
-		chmod 644 ${PREFIX}/share/examples/autossh/rscreen
-		chmod 644 ${PREFIX}/man/man1/autossh.1 
+		chmod 644 ${PREFIX}/share/doc/autossh/examples/autossh.host 
+		chmod 644 ${PREFIX}/share/doc/autossh/examples/rscreen
+		chmod 644 ${MAN_PREFIX}/man/man1/autossh.1 
