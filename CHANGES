@@ -1,4 +1,11 @@
 
+Version 1.2d
+
+- AIX support (thanks to Stefan Rodenstein)
+- fix argument rewrite bug when using AUTOSSH_PORT (thanks
+  to Peter Williams)
+- log pid of ssh child just after fork
+
 Version 1.2c
 
 - use Marcus Friedl's suggestion to simply connect to "127.0.0.1" 

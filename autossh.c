@@ -51,14 +51,14 @@ typedef int socklen_t;
 #include <poll.h>
 #endif
 
-#if !defined(__svr4__)
+#if !defined(__svr4__) && !defined(__aix__)
 extern char *__progname;
 #else
 char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.22 2002/12/23 06:20:42 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.23 2003/02/10 05:21:18 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -138,8 +138,9 @@ main(int argc, char **argv)
 	char	wmbuf[256], rmbuf[256];
 
 	int	sock;
+	int	done_fwds = 0;
 
-#if defined(__svr4__)
+#if defined(__svr4__) || defined(__aix__)
 	__progname = "autossh";
 #endif	
 
@@ -220,7 +221,7 @@ main(int argc, char **argv)
 	}
 
 	if (logtype & L_SYSLOG)
-#if !defined(__svr4__)
+#if !defined(__svr4__) && !defined(__aix__)
 		openlog(__progname, LOG_PID|syslog_perror, LOG_USER);
 #else
 		openlog(__progname, LOG_PID, LOG_USER);
@@ -232,19 +233,21 @@ main(int argc, char **argv)
 	 */
 	add_arg(ssh_path);
 	for (i = 1; i < argc; i++) {
-		if (env_port) {
+ 		if (env_port && !done_fwds) {
 			add_arg("-L");
 			add_arg(wmbuf);
 			add_arg("-R");
 			add_arg(rmbuf);
+			done_fwds = 1;
 		} else if (argv[i][0] == '-' && argv[i][1] == 'M') {
 			if (argv[i][2] == '\0')
 				i++;
-			if (wp) {
+			if (wp && !done_fwds) {
 				add_arg("-L");
 				add_arg(wmbuf);
 				add_arg("-R");
 				add_arg(rmbuf);
+				done_fwds = 1;
 			}
 			continue;
 		} 
@@ -318,7 +321,7 @@ get_env_args(void)
 		ssh_path = s;
 
 	if ((s = getenv("AUTOSSH_DEBUG")) != NULL) {
-#if !defined(__svr4__)
+#if !defined(__svr4__) && !defined(__aix__)
 		syslog_perror = LOG_PERROR;
 #endif
 		loglevel = LOG_DEBUG;
@@ -408,6 +411,7 @@ ssh_run(int sock, char **av)
 			xerrlog(LOG_ERR, "fork: %s", strerror(errno));
 			break;
 		default:
+			errlog(LOG_INFO, "ssh child pid is %d", (int)cchild);
 			if (ssh_watch(sock) == P_EXIT)
 				return;
 			break;
@@ -738,18 +742,6 @@ conn_test(int sock, char *host, char *write_port)
 	if ((wd = conn_remote(host, write_port)) == -1)
 		return 0;
 
-	/* 
-	 * Ugh. I think this was belt-and-suspenders anyhow; and
-	 * it don't work under Linux 2.2 kernels.
-	 */
-#if 0
-#if !defined(__linux__)
-	if (setsockopt(wd, SOL_SOCKET, SO_SNDTIMEO, 
-	    &tv, sizeof(tv)) == -1)
-		xerrlog(LOG_ERR, "setsockopt: %s", strerror(errno));
-#endif
-#endif
-
 	pfd[1].fd = wd;
 	pfd[1].events = POLLOUT;
 
@@ -811,15 +803,6 @@ start_accept:
 				    strerror(errno));
 				goto abort_test;
 			}
-
-#if 0
-#if !defined(__linux__)
-			if (setsockopt(rd, SOL_SOCKET, SO_RCVTIMEO, 
-			    &tv, sizeof(tv)) == -1)
-				errlog(LOG_ERR, "setsockopt: %s", 
-				    strerror(errno));
-#endif
-#endif
 			break;
 		}
 	}
@@ -1053,12 +1036,20 @@ void
 doerrlog(int level, char *fmt, va_list ap)
 {
 	FILE	*fl;
+#if defined(__aix__)
+	char	logbuf[1024];
+#endif
 
 	fl = flog;	/* only set per-call */
 
 	if (loglevel >= level) {
 		if (logtype & L_SYSLOG) {
+#if defined(__aix__)
+			(void)vsnprintf(logbuf, sizeof(logbuf), fmt, ap);
+			syslog(level, logbuf);
+#else
 			vsyslog(level, fmt, ap);
+#endif
 		} else if (!fl) {
 			/* 
 			 * if we're not using syslog, and we

@@ -6,10 +6,10 @@
 
 VER=1.2d
 
-SSH=		/usr/bin/ssh
-PREFIX?=	/usr/local
+SSH=		/usr/local/bin/ssh
+PREFIX=		/usr/local
 
-CFLAGS=		-Wall -D"SSH_PATH=\"$(SSH)\""\
+CFLAGS=		-D__aix__ -D"SSH_PATH=\"$(SSH)\""\
 		-D"VER=\"$(VER)\""
 OFILES=		autossh.o
 LIBS=
