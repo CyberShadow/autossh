@@ -1,10 +1,10 @@
 #
 # Adjust SSH below to suit.
 #
-# $Id: Makefile.src,v 1.6 2002/12/23 17:42:56 harding Exp harding $
+# $Id: Makefile.src,v 1.7 2003/09/30 17:47:21 harding Exp harding $
 #
 
-VER=1.2d
+VER=1.2e
 
 SSH=		/usr/local/bin/ssh
 PREFIX=		/usr/local
@@ -36,3 +36,9 @@ install:	autossh
 		cp autossh.host ${PREFIX}/share/examples/autossh
 		cp rscreen ${PREFIX}/share/examples/autossh
 		cp autossh.1 ${PREFIX}/man/man1
+		chmod 755 ${PREFIX}/bin/autossh
+		chmod 644 ${PREFIX}/share/doc/autossh/CHANGES
+		chmod 644 ${PREFIX}/share/doc/autossh/README
+		chmod 644 ${PREFIX}/share/examples/autossh/autossh.host 
+		chmod 644 ${PREFIX}/share/examples/autossh/rscreen
+		chmod 644 ${PREFIX}/man/man1/autossh.1 

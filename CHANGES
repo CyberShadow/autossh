@@ -1,4 +1,14 @@
 
+Version 1.2e
+
+- check for attempt to use -f flag; exit as error
+- if AUTOSSH_GATETIME is 0, then disable any of the startup
+  failure bailouts, and just retry
+- set SO_REUSEADDR on listening socket (Jedi One's suggestion)
+- show port number in some error messages
+- note in man page and README about -M 0 turning port monitoring off
+- remove duplicate include of sys/socket.h
+
 Version 1.2d
 
 - AIX support (thanks to Stefan Rodenstein)

@@ -4,7 +4,7 @@
  *
  * 	From the example of rstunnel.
  *
- * Copyright (c) Carson Harding, 2002.
+ * Copyright (c) Carson Harding, 2002,2003.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -28,7 +28,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/socket.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -58,7 +57,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.23 2003/02/10 05:21:18 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.26 2003/09/30 16:50:19 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -75,8 +74,8 @@ const char *rcsid = "$Id: autossh.c,v 1.23 2003/02/10 05:21:18 harding Exp $";
 #define P_RESTART	1	/* restart ssh process */
 #define P_EXIT		2	/* exit */
 
-#define L_FILELOG 0x01		/* log to file   */
-#define L_SYSLOG  0x02		/* log to syslog */
+#define L_FILELOG 	0x01	/* log to file   */
+#define L_SYSLOG  	0x02	/* log to syslog */
 
 int	logtype  = L_SYSLOG;	/* default log to syslog */
 int	loglevel = LOG_INFO;	/* default loglevel */
@@ -164,6 +163,12 @@ main(int argc, char **argv)
 			fprintf(stderr, "%s %s\n", __progname, VER);
 			exit(0);
 			break;
+		case 'f':
+			fprintf(stderr, 
+			    "error: %s is not compatible with "
+			    "the ssh \"-f\" flag\n", __progname);
+			exit(1);
+			break;
 		case '?':
 			usage();
 			exit(1);
@@ -207,7 +212,7 @@ main(int argc, char **argv)
 	else {
 		rp = wp+1;
 		/* all this for solaris; we could use asprintf() */
-		snprintf(readp, sizeof(readp), "%d", rp);
+		(void)snprintf(readp, sizeof(readp), "%d", rp);
 
 		/* port-forward arg strings */
 		n = snprintf(wmbuf, sizeof(wmbuf), "%d:%s:%d", wp, mhost, wp);
@@ -262,7 +267,7 @@ main(int argc, char **argv)
 	if (writep) {
 		sock = conn_listen(mhost, readp);
 		/* set close-on-exec */
-		fcntl(sock, F_SETFD, 1);
+		(void)fcntl(sock, F_SETFD, 1);
 	}
 
 	ssh_run(sock, newav);
@@ -549,7 +554,7 @@ ssh_wait(int options) {
 			}
 		} else if (WIFEXITED(status)) {
 			evalue = WEXITSTATUS(status);
-			if (start_count == 1) {
+			if (start_count == 1 && gate_time != 0) {
 				/*
 				 * If ssh exits too quickly, give up.
 				 */
@@ -589,7 +594,7 @@ ssh_wait(int options) {
 				 * then ssh fails exit(1) on the attempt 
 				 * to reconnect....so we try to restart.
 				 */
-				if (start_count > 1) {
+				if (start_count > 1 || gate_time == 0) {
 					errlog(LOG_INFO,
 					    "ssh exited with error "
 					    "status %d; restarting ssh",
@@ -620,6 +625,7 @@ ssh_wait(int options) {
 void
 ssh_kill(void)
 {
+	int w;
 	int status;
 
 	if (cchild) {
@@ -628,7 +634,10 @@ ssh_kill(void)
 		/* if (kill(cchild, 0) != -1)
 		 +	kill(cchild, SIGKILL);
 		 */
-		(void)waitpid(cchild, &status, 0);
+		if ((w = waitpid(cchild, &status, 0)) <= 0) {
+			errlog(LOG_ERR, 
+			    "waitpid() not successful, returned %d", w);
+		}
 	}
 	return;
 }
@@ -938,7 +947,7 @@ conn_remote(char *host, char *port)
 		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
 
 	if (connect(sock, res->ai_addr, res->ai_addrlen) == -1) {
-		errlog(LOG_INFO, "%s: %s", host, strerror(errno));
+		errlog(LOG_INFO, "%s:%s: %s", host, port, strerror(errno));
 		close(sock);
 		return -1;
 	}
@@ -955,6 +964,7 @@ conn_listen(char *host,  char *port)
 {
 	int sock;
 	struct addrinfo *res;
+	int on = 1;
 
 	/* 
 	 * Unlike conn_remote, we don't need to cache the 
@@ -967,9 +977,15 @@ conn_listen(char *host,  char *port)
 	    res->ai_protocol)) == -1)
 		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
 
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+	    (char *) &on, sizeof on) != 0) {
+		xerrlog(LOG_ERR, "setsockopt: %s", strerror(errno));
+	}
+
 	if (bind(sock, (struct sockaddr *)res->ai_addr,
 	    res->ai_addrlen) == -1)
-		xerrlog(LOG_ERR, "bind: %s", strerror(errno));
+		xerrlog(LOG_ERR, "bind on %s:%s: %s", 
+		    host, port, strerror(errno));
 
 	if (listen(sock, 1) < 0)
 		xerrlog(LOG_ERR, "listen: %s", strerror(errno));

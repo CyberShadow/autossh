@@ -17,7 +17,7 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $Id: autossh.1,v 1.4 2002/11/19 23:39:27 harding Exp $
+.\" $Id: autossh.1,v 1.6 2003/09/30 16:48:14 harding Exp $
 .\"
 .Dd May 6, 2002
 .Dt AUTOSSH 1
@@ -31,8 +31,8 @@
 .Ar [SSH_OPTIONS]
 .Sh DESCRIPTION
 .Nm
-is a program to start a copy of ssh and monitor it, restarting
-it as necessary should it die or stop passing traffic.
+is a program to start a copy of ssh and monitor it, restarting it as
+necessary should it die or stop passing traffic.
 .Pp
 The original idea and the mechanism were from rstunnel (Reliable SSH
 Tunnel). With version 1.2 of
@@ -83,7 +83,7 @@ try,
 .Nm
 .Bl -tag -width Ds
 .It 1.
-Will assume that there is some problem with syntax or the connection 
+will assume that there is some problem with syntax or the connection 
 setup, and will exit rather than retrying;
 .It 2.
 There is now a "starting gate" time. If the first ssh process fails 
@@ -93,7 +93,9 @@ assumes that
 it never made it "out of the starting gate", and exits. This is to handle
 initial failed authentication, connection, etc. This time is 30 seconds
 by default, and can be adjusted (see the AUTOSSH_GATETIME environment
-variable below).
+variable below). If AUTOSSH_GATETIME is set to 0, then both behaviours 
+are disabled: there is no "starting gate", and autossh will restart even 
+if ssh fails on the first run with an exit status of 1.
 .El
 .Pp
 .Ss Continued failures
@@ -146,6 +148,9 @@ receive it back on the port above. For example, if you specify "-M
 .Nm
 will set up forwards so that it can send data on port
 20000 and receive it back on 20001.
+.Pp
+Setting the port to 0 turns the monitoring function off, and autossh
+will only restart ssh upon ssh's exit.
 .It Fl V 
 causes 
 .Nm 
@@ -177,10 +182,14 @@ it, syslog is set to duplicate log entries to stderr.
 .It Ev AUTOSSH_PORT
 Sets the connection monitoring port. Mostly in case ssh
 appropriates -M at some time. But because of this possible use, 
-AUTOSSH_PORT overrides the -M flag.
+AUTOSSH_PORT overrides the -M flag. A value of 0 turns the
+monitoring function off.
 .It Ev AUTOSSH_GATETIME
-Specifies how long ssh must be up before we consider
-it a successful connection. The default is 30 seconds.
+Specifies how long ssh must be up before we consider it a successful
+connection. The default is 30 seconds. Note that if AUTOSSH_GATETIME
+is set to 0, then not only is the gatetime behaviour turned off,
+but autossh also ignores the first run failure of ssh. This may be
+useful when running autossh at boot.
 .Sh AUTHOR
 .Nm
 was written by Carson Harding.
