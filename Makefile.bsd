@@ -1,0 +1,36 @@
+#
+# Adjust SSH below to suit.
+#
+# $Id: Makefile.src,v 1.5 2002/05/02 13:48:16 harding Exp harding $
+#
+
+VER=1.2a
+
+SSH=		/usr/bin/ssh
+PREFIX?=	/usr/local
+
+CFLAGS=		-Wall -pedantic -D"SSH_PATH=\"$(SSH)\""\
+		-D"VER=\"$(VER)\""
+OFILES=		autossh.o
+LIBS=
+
+all:		autossh
+
+autossh:	$(OFILES)
+		$(CC) -o autossh $(OFILES) $(LIBS)
+
+clean:
+		- /bin/rm -f *.o *.a *.core *~
+
+allclean:	clean
+		- /bin/rm -f autossh
+
+install:	autossh
+		cp autossh ${PREFIX}/bin
+		mkdir -p -m 755 ${PREFIX}/share/doc/autossh
+		mkdir -p -m 755 ${PREFIX}/share/examples/autossh
+		mkdir -p -m 755 ${PREFIX}/man/man1
+		cp CHANGES README ${PREFIX}/share/doc/autossh
+		cp autossh.host ${PREFIX}/share/examples/autossh
+		cp rscreen ${PREFIX}/share/examples/autossh
+		cp autossh.1 ${PREFIX}/man/man1

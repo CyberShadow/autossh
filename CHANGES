@@ -1,0 +1,37 @@
+
+Version 1.2a
+
+- setsockopt() will not set timeouts on socket read/write ops
+  under Linux 2.2 kernels (and earlier, I presume). So unless
+  someone tells me we really need them, I've #ifdef'd  the
+  setsockopt()s out for Linux.
+- check value of fd returned by accept().
+- Oh, there's a man page now. Unfortunately, it doesn't render 
+  for Solaris. Sorry, Solaris users are still stuck with the
+  README.
+
+Version 1.2
+
+- Major restructuring of code, mostly to support the change to 
+  a loop of forwarded ports to test the network connection.
+- Incremental back off on rate of connection attempts when
+  there are rapid failures to establish/maintain a connection.
+
+Version 1.1b
+
+- change handling of ssh exit status
+- introduce "starting gate" time: ssh process that dies too
+  early is deemed not to have made it out of the starting
+  gate, and autossh exits.
+
+Version 1.1a
+
+- fix race after failure to exec ssh where parent will
+  loop attempting to restart
+- add -V version flag
+- use strtoul() for environment option parsing
+- drop useless intermediate function ssh_setwatch()
+
+Version 1.1
+
+Initial release

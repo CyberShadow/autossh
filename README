@@ -1,0 +1,160 @@
+
+autossh Version 1.2
+-------------------
+
+Usage
+-----
+	autossh -M <port> [SSH OPTIONS]
+
+Description
+-----------
+
+autossh is a program to start a copy of ssh and monitor it, restarting
+it as necessary should it die or stop passing traffic.
+
+The original idea and the mechanism were from rstunnel (Reliable SSH
+Tunnel). With this version the method changes: autossh uses ssh to
+construct a loop of ssh forwardings (one from local to remote, one
+from remote to local), and then sends test data that it expects to
+get back. (The idea is thanks to Terrence Martin.)
+
+autossh has only two arguments of its own:
+
+ -M <port>, to specify the base monitoring port to use. 
+
+	This port and the port immediately above it (port# + 1) should
+	be something nothing else is using. autossh will send test
+	data on the base monitoring port, and receive it back on the
+	port above. For example, if you specify "-M 20000", autossh 
+	will set up forwards so that it can send data on port
+	20000 and receive it back on 20001.
+
+ -V to have autossh display its version and exit.
+
+All other arguments are passed to ssh. There are a number of
+other settings, but these are all controlled through environment
+variables. ssh seems to be appropriating more and more letters for
+options, and this seems the easiest way to avoid collisions.
+
+autossh tries to distinguish the manner of death of the ssh process it
+is monitoring and act appropriately. The rules are:
+
+   - If the ssh process exited normally (for example, someone typed
+     "exit" in an interactive session), autossh exits rather than 
+     restarting;
+   - If autossh itself receives a SIGTERM, SIGINT, or a SIGKILL
+     signal, it assumes that it was deliberately signalled, and exits
+     after killing the child ssh process;
+   - Periodically (by default every 10 minutes), autossh attempts to pass
+     traffic on the monitor forwarded port. If this fails, autossh will
+     kill the child ssh process (if it is still running) and start a new
+     one; 
+   - If the child ssh process dies for any other reason, autossh will
+     attempt to start a new one.
+
+Startup behaviour:
+
+   - If the ssh session fails with an exit status of 1 on the very first 
+     try, autossh will assume that there is some problem with syntax or
+     the connection setup, and will exit rather than retrying;
+   - There is now a "starting gate" time. If the first ssh process fails 
+     within the first few seconds of being started, autossh assumes that 
+     it never made it "out of the starting gate", and exits. This is to handle
+     initial failed authentication, connection, etc. This time is 30 seconds
+     by default, and can be adjusted (see the AUTOSSH_GATETIME environment
+     variable below).
+
+Continued failures:
+
+   - If the ssh connection fails and attempts to restart it fail in
+     quick succession, autossh will start delaying its attempts to
+     restart, gradually backing farther and farther off up to a
+     maximum interval of the autossh poll time (usually 10 minutes).
+     autossh can be "prodded" to retry by signalling it, perhaps with
+     SIGHUP ("kill -HUP").
+
+Connection Setup
+----------------
+
+As connections must be established unattended, the use of autossh
+requires that some form of automatic authentication be set up. The use
+of RSAAuthentication with ssh-agent is the recommended method. The
+example wrapper script attempts to check if there is an agent running
+for the current environment, and to start one if there isn't.
+
+It cannot be stressed enough that you must make sure ssh works on its
+own, that you can set up the session you want before you try to
+run it under autossh.
+
+If you are tunnelling and using an older version of ssh that does not
+support the -N flag, you should upgrade (your version has security
+flaws). If you can't upgrade, you may wish to do as rstunnel does, and
+give ssh a command to run, such as "sleep 99999999999".
+
+Disabling connection monitoring
+-------------------------------
+
+A monitor port value of "0" ("autossh -M 0") will disable use of
+the monitor ports; autossh will then only react to signals and the
+death of the ssh process.
+
+Environment Variables
+---------------------
+
+The following environment variables can be set:
+
+    AUTOSSH_PATH	  - path to the ssh executable, in case
+			    it is different than that compiled in.
+    AUTOSSH_POLL	  - poll time in seconds; default is 600.
+    AUTOSSH_LOGLEVEL	  - log level, they correspond to the levels 
+			    used by syslog; so 0-7 with 7 being the
+			    chattiest.
+    AUTOSSH_LOGFILE	  - sets autossh to use the named log file,
+			    rather than syslog.
+    AUTOSSH_DEBUG	  - sets logging level to LOG_DEBUG, and if
+			    the operating system supports it, sets
+			    syslog to duplicate log entries to stderr.
+    AUTOSSH_PORT	  - set monitor port. Mostly in case ssh
+			    appropriates -M at some time. But because
+			    of this possible use, AUTOSSH_PORT overrides
+			    the -M flag.
+    AUTOSSH_GATETIME      - how long ssh must be up before we consider
+	                    it a successful connection. Default is 30
+			    seconds.
+
+Logging and Syslog
+------------------
+
+autossh logs to syslog using the LOG_USER facility. Your syslog may
+have to be configured to accept messages for this facility. This is
+usually done in /etc/syslog.conf.
+
+
+BUILDING AND INSTALLING AUTOSSH
+--------------------------------
+
+The makefiles assume you're using gcc. If not, you will have to
+change some flags.
+
+Select the makefile that matches your system:
+
+       Makefile.bsd	 - OpenBSD, FreeBSD, NetBSD
+       Makefile.linux	 - Linux
+       Makefile.solaris	 - Solaris
+
+You should check that SSH in the Makefile points to the location
+of the ssh binary on your system. Then run make with the appropriate 
+file, for example:
+
+     make -f Makefile.bsd
+
+Copy the resulting autossh binary to where you'd like it. Use
+
+     make -f Makefile.bsd allclean
+
+to clean up after.
+
+Look at autossh.host for an example wrapper script.
+
+-- 
+Kudos and raspberries to harding@motd.ca
