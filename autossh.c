@@ -29,6 +29,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <poll.h>
 #include <stdio.h>
@@ -51,7 +52,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.20 2002/05/09 04:39:14 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.21 2002/11/18 16:48:33 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -97,7 +98,7 @@ sigjmp_buf jumpbuf;
 
 void	get_env_args(void);
 void	add_arg(char *s);
-void	ssh_run(char **argv);
+void	ssh_run(int sock, char **argv);
 int	ssh_watch(int sock);
 int	ssh_wait(int options);
 void	ssh_kill(void);
@@ -129,6 +130,8 @@ main(int argc, char **argv)
 	char	*s;
 	int	wp, rp;
 	char	wmbuf[256], rmbuf[256];
+
+	int	sock;
 
 #if defined(__svr4__)
 	__progname = "autossh";
@@ -187,13 +190,13 @@ main(int argc, char **argv)
 	 */
 	wp = strtoul(writep, &s, 0);
 	if (wp == 0) {
-		errlog(LOG_INFO, "port set to 0, monitoring disabled\n");
+		errlog(LOG_INFO, "port set to 0, monitoring disabled");
 		writep = NULL;
 	}
 	else if (*s != '\0')
-		xerrlog(LOG_ERR, "invalid port \"%s\"\n", writep);
+		xerrlog(LOG_ERR, "invalid port \"%s\"", writep);
 	else if (wp > 65534 || wp < 0)
-		xerrlog(LOG_ERR, "monitor ports (%d,%d) out of range\n",wp,rp);
+		xerrlog(LOG_ERR, "monitor ports (%d,%d) out of range",wp,rp);
 	else {
 		rp = wp+1;
 		/* all this for solaris; we could use asprintf() */
@@ -242,7 +245,21 @@ main(int argc, char **argv)
 		add_arg(argv[i]);
 	}
 
-	ssh_run(newav);
+	/* 
+	 * Only if we're doing the network monitor thing.
+	 * Socket once opened stays open for listening for 
+	 * the duration of the program.
+	 */
+	if (writep) {
+		sock = conn_listen(mhost, readp);
+		/* set close-on-exec */
+		fcntl(sock, F_SETFD, 1);
+	}
+
+	ssh_run(sock, newav);
+
+	shutdown(sock, SHUT_RDWR);
+	close(sock);
 
 	if (logtype & L_SYSLOG)
 		closelog();
@@ -303,7 +320,7 @@ get_env_args(void)
 		loglevel = strtoul(s, &t, 0);
 		if (*t != '\0' ||
 		    loglevel < LOG_EMERG || loglevel > LOG_DEBUG)
-			xerrlog(LOG_ERR, "invalid log level \"%s\"\n", s);
+			xerrlog(LOG_ERR, "invalid log level \"%s\"", s);
 	}
 
 	if ((s = getenv("AUTOSSH_LOGFILE")) != NULL) {
@@ -317,7 +334,7 @@ get_env_args(void)
 		poll_time = strtoul(s, &t, 0);
 		if (poll_time == 0 || *t != '\0' )
 			xerrlog(LOG_ERR, 
-			    "invalid poll time \"%s\"\n", s);
+			    "invalid poll time \"%s\"", s);
 		if (poll_time <= 0)
 			poll_time = POLL_TIME; 
 	}
@@ -325,7 +342,7 @@ get_env_args(void)
 	if ((s = getenv("AUTOSSH_GATETIME")) != NULL) {
 		gate_time = (double)strtoul(s, &t, 0);
 		if (gate_time < 0 || *t != '\0' )
-			xerrlog(LOG_ERR, "invalid gate time \"%s\"\n", s);
+			xerrlog(LOG_ERR, "invalid gate time \"%s\"", s);
 	}		
 
 	if ((s = getenv("AUTOSSH_PORT")) != NULL)
@@ -338,9 +355,8 @@ get_env_args(void)
  * Run ssh
  */
 void
-ssh_run(char **av) 
+ssh_run(int sock, char **av) 
 {
-	int	sock;
 	struct	sigaction act;
 	struct	timeval tv;
 
@@ -364,14 +380,6 @@ ssh_run(char **av)
 	 */
 	gettimeofday(&tv, NULL);
 	srandom(getpid() ^ tv.tv_usec ^ tv.tv_sec);
-
-	/* 
-	 * Only if we're doing the network monitor thing.
-	 * Socket once opened stays open for listening for 
-	 * the duration of the program.
-	 */
-	if (writep)
-		sock = conn_listen(mhost, readp);
 
 	while (1) {
 		start_count++;
@@ -399,6 +407,7 @@ ssh_run(char **av)
 			break;
 		}
 	}
+
 }
 
 /*
@@ -418,7 +427,7 @@ ssh_watch(int sock)
 	    (int)cchild, start_count);
 #endif
 
-	while(1) {	
+	for (;;) {	
 		if ((val = sigsetjmp(jumpbuf, 1)) == 0) {
 
 			errlog(LOG_DEBUG, "check on child %d", cchild);
@@ -487,8 +496,19 @@ ssh_watch(int sock)
  * have worked once. This doesn't necessarily work if
  * the user did an interactive authentication, and then
  * isn't there on the restart to enter his password....
- * But we can only know very little about what's going on
- * inside ssh.
+ * But we can only know very little about what's going 
+ * on inside ssh.
+ *
+ * This is further complicated by the behaviour of 
+ * OpenSSH when sent SIGTERM (15). It is possible to 
+ * kill it before it installs the handler for that 
+ * signal, in which case it autossh behaves as above 
+ * and exits. But, in  at least interactive use, it 
+ * appears that once the session is established ssh 
+ * installs a handler, and then when signalled (killed) 
+ * it exits with status 255. autossh does not know 
+ * it (ssh) was signalled, so restarts it.
+ *
  */
 int
 ssh_wait(int options) {
@@ -692,7 +712,7 @@ conn_test(int sock, char *host, char *write_port)
 	char	*wp, *rp;
 	char	wbuf[64];
 	char	rbuf[sizeof(wbuf)];
-	
+
 	wd = -1;			/* default desc. values */
 	rd = -1;
 	rval = 0;			/* default return value */
@@ -705,6 +725,9 @@ conn_test(int sock, char *host, char *write_port)
 
 	id = random();
 
+	if (dolongjmp != 0)
+		errlog(LOG_ERR, "conn_test(): error: dolongjmp != 0");
+
 	/* set up write connection */
 	if ((wd = conn_remote(host, write_port)) == -1)
 		return 0;
@@ -713,10 +736,12 @@ conn_test(int sock, char *host, char *write_port)
 	 * Ugh. I think this was belt-and-suspenders anyhow; and
 	 * it don't work under Linux 2.2 kernels.
 	 */
+#if 0
 #if !defined(__linux__)
 	if (setsockopt(wd, SOL_SOCKET, SO_SNDTIMEO, 
 	    &tv, sizeof(tv)) == -1)
 		xerrlog(LOG_ERR, "setsockopt: %s", strerror(errno));
+#endif
 #endif
 
 	pfd[1].fd = wd;
@@ -725,8 +750,11 @@ conn_test(int sock, char *host, char *write_port)
 start_accept:
 
 	/* close read socket if we're coming around again */
-	if (rd != -1)
+	if (rd != -1) {
+		shutdown(rd, SHUT_RDWR);
 		close(rd);
+		rd = -1;
+	}
 	
 	if (tries++ > MAX_CONN_TRIES) {
 		errlog(LOG_INFO, "tried connection %d times and failed");
@@ -777,11 +805,14 @@ start_accept:
 				    strerror(errno));
 				goto abort_test;
 			}
+
+#if 0
 #if !defined(__linux__)
 			if (setsockopt(rd, SOL_SOCKET, SO_RCVTIMEO, 
 			    &tv, sizeof(tv)) == -1)
 				errlog(LOG_ERR, "setsockopt: %s", 
 				    strerror(errno));
+#endif
 #endif
 			break;
 		}
@@ -861,8 +892,10 @@ start_accept:
 
 abort_test:
 
-	if (wd >= 0) close(wd);
-	if (rd >= 0) close(rd);
+	shutdown(wd, SHUT_RDWR);
+	close(wd); 
+	shutdown(rd, SHUT_RDWR);
+	close(rd);
 
 	return rval;
 }
@@ -916,7 +949,8 @@ conn_remote(char *host, char *port)
 		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
 
 	if (connect(sock, res->ai_addr, res->ai_addrlen) == -1) {
-		errlog(LOG_INFO, "%s: cannot connect", host);
+		errlog(LOG_INFO, "%s: %s", host, strerror(errno));
+		close(sock);
 		return -1;
 	}
 
@@ -930,29 +964,30 @@ conn_remote(char *host, char *port)
 int
 conn_listen(char *host,  char *port)
 {
-	int s;
+	int sock;
 	struct addrinfo *res;
 
 	/* 
 	 * Unlike conn_remote, we don't need to cache the 
-	 * info; we're only calling once at start.
+	 * info; we're only calling once at start. All errors
+	 * here are fatal.
 	 */
 	conn_addr(host, port, &res);
 
-	if ((s = socket(res->ai_family, res->ai_socktype,
+	if ((sock = socket(res->ai_family, res->ai_socktype,
 	    res->ai_protocol)) == -1)
 		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
 
-	if (bind(s, (struct sockaddr *)res->ai_addr,
+	if (bind(sock, (struct sockaddr *)res->ai_addr,
 	    res->ai_addrlen) == -1)
 		xerrlog(LOG_ERR, "bind: %s", strerror(errno));
 
-	if (listen(s, 1) < 0)
+	if (listen(sock, 1) < 0)
 		xerrlog(LOG_ERR, "listen: %s", strerror(errno));
 
 	freeaddrinfo(res);
 
-	return s;
+	return sock;
 }
 
 /*

@@ -1,4 +1,18 @@
 
+Version 1.2b
+
+(Thanks to Simon Easter for bug reports and trials)
+
+- fix file descriptor leak
+- setsockopt()'s don't work for Solaris either. Give up on them.
+- set close-on-exec for read socket so will be closed when
+  ssh executed
+- do shutdown() before close() (paranoia)
+- close read socket before exit
+- pull read socket open and close up out of ssh_run()
+- cosmetic changes to some loops, get rid of newlines in some
+  errlog strings.
+
 Version 1.2a
 
 - setsockopt() will not set timeouts on socket read/write ops
