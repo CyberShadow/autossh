@@ -1,6 +1,6 @@
 /*
  * this is BSD's daemon() for things that don't have it; cut from OpenBSD
- * $Id: daemon.h,v 1.3 2004/01/31 04:52:30 harding Exp $
+ * $Id: daemon.h,v 1.4 2004/06/24 20:08:21 harding Exp $
  */
 
 /*-
@@ -41,6 +41,8 @@
 #if defined(LIBC_SCCS) && !defined(lint)
 static char rcsid[] = "$OpenBSD: daemon.c,v 1.2 1996/08/19 08:22:13 tholo Exp $";
 #endif /* LIBC_SCCS and not lint */
+
+int	daemon(int nochdir, int noclose);
 
 int
 daemon(int nochdir, int noclose)

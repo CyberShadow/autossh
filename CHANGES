@@ -1,4 +1,25 @@
 
+Version 1.2g
+
+- add AUTOSSH_NTSERVICE (Andrew Schulman)
+- fix bad calculation for seconds left in poll time (again from
+  Andrew Schulman)
+- from Andrew Schulman: add support for older networking and cygwin
+- add AUTOSSH_MAXSTART (from Hugo Haas)
+- loop around waitpid() in ssh_kill() in case interrupted (thanks to
+  Jens Krabbenhoeft)
+- update ssh argument string
+- move openlog above port error checking
+- handle environment variables and -M arg being set to the
+  empty string (reported by Dan Christensen via Filippo Giunche)
+- add some rudimetary auto-adjust to the network timeouts for
+  low poll times. So by default 15secs on each of accept() and 
+  poll()to deal with high-latency connections, but as poll time 
+  falls below 30secs, then adjust timeouts down as well.
+- adjust division in grace_time() to allow for low poll time
+- don't call shutdown() and close() on invalid socket ()
+  (found by Dmitry V. Levin)
+
 Version 1.2f
 
 - by popular request, support the -f flag by doing the fork/background 

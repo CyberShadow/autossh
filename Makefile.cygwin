@@ -9,16 +9,17 @@ VER=1.2g
 SSH=		/usr/bin/ssh
 PREFIX?=	/usr/local
 
-CFLAGS=		-Wall -pedantic -Wstrict-prototypes -Wmissing-prototypes \
-		-D"SSH_PATH=\"$(SSH)\""\
+CFLAGS=		-Wall -D"SSH_PATH=\"$(SSH)\""\
+		-D"HAVE_NO_ADDRINFO"\
 		-D"VER=\"$(VER)\""
 OFILES=		autossh.o
 LIBS=
 
-TARGET=		autossh
+TARGET=		autossh.exe
 
 all:		$(TARGET)
 
+autossh:	$(TARGET)
 
 $(TARGET):	$(OFILES)
 		$(CC) -o $(TARGET) $(OFILES) $(LIBS)

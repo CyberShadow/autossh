@@ -70,7 +70,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.33 2004/02/19 17:53:50 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.46 2004/07/19 18:45:33 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -78,10 +78,9 @@ const char *rcsid = "$Id: autossh.c,v 1.33 2004/02/19 17:53:50 harding Exp $";
 
 #define POLL_TIME	600	/* 10 minutes default */
 #define GATE_TIME	30	/* 30 seconds default */
-#define TIMEO_IO	1	/* read/write timeout (secs) */
-#define TIMEO_POLLA	15000	/* poll on accept() timeout (msecs) */
-#define TIMEO_POLLIO	15000	/* poll on net io (msecs) */
+#define TIMEO_NET	15000	/* poll on accept() and io (msecs) */
 #define MAX_CONN_TRIES	3	/* how many attempts */
+#define MAX_START	(-1)	/* max # of runs; <0 == forever */
 
 #define P_CONTINUE	0	/* continue monitoring */
 #define P_RESTART	1	/* restart ssh process */
@@ -101,9 +100,15 @@ char	*mhost = "127.0.0.1";	/* host in port forwards */
 char	*env_port;		/* port spec'd in environment */
 int	poll_time = POLL_TIME;	/* default connection poll time */
 double	gate_time = GATE_TIME;	/* time to "make it out of the gate" */
+int	max_start = MAX_START;  /* how many times to run (default no limit) */
+int	net_timeout = TIMEO_NET; /* timeout on network data */
 char	*ssh_path = SSH_PATH;	/* default path to ssh */
 int	start_count;		/* # of times exec()d ssh */
 time_t	start_time;		/* time we exec()d ssh */
+
+#if defined(__CYGWIN__)
+int	ntservice;		/* set some stuff for running as nt service */
+#endif
 
 int	newac;			/* argc, argv for ssh */
 char	**newav;
@@ -123,7 +128,11 @@ int	ssh_watch(int sock);
 int	ssh_wait(int options);
 void	ssh_kill(void);
 int	conn_test(int sock, char *host, char *write_port);
+#ifdef HAVE_NO_ADDRINFO
+void	conn_addr(char *host, char *port, struct sockaddr_in *resp);
+#else
 void	conn_addr(char *host,  char *port, struct addrinfo **resp);
+#endif
 int	conn_listen(char *host,  char *port);
 int	conn_remote(char *host,  char *port);
 void	grace_time(time_t last_start);
@@ -140,7 +149,7 @@ void
 usage(void)
 {
 	fprintf(stderr, 
-	    "usage: %s -M monitor_port [-f] [SSH_OPTIONS]\n", 
+	    "usage: %s [-M monitor_port] [-f] [SSH_OPTIONS]\n", 
 	    __progname);
 }
 
@@ -154,9 +163,12 @@ main(int argc, char **argv)
 	int	wp, rp;
 	char	wmbuf[256], rmbuf[256];
 
-	int	sock;
+	int	sock = -1;
 	int	done_fwds = 0;
 	int	runasdaemon = 0;
+#if defined(__CYGWIN__)
+	int	sawoptionn = 0;
+#endif
 
 #if defined(__svr4__) || defined(__aix__)
 	__progname = "autossh";
@@ -172,7 +184,7 @@ main(int argc, char **argv)
 	 * to ssh when we call it.
 	 */
 	while ((ch = getopt(argc, argv, 
-	    "M:VafgknqstvxACNPTX1246b:c:e:i:l:m:o:p:F:L:R:D:")) != -1) {
+	    "M:V1246ab:c:e:fgi:kl:m:no:p:qstvxACD:F:I:L:NPR:TXY")) != -1) {
 		switch(ch) {
 		case 'M':
 			if (!env_port)
@@ -185,6 +197,11 @@ main(int argc, char **argv)
 		case 'f':
 			runasdaemon = 1;
 			break;
+#if defined(__CYGWIN__)
+		case 'N':
+			sawoptionn = 1;
+			break;
+#endif
 		case '?':
 			usage();
 			exit(1);
@@ -212,19 +229,26 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	if (logtype & L_SYSLOG)
+#if !defined(__svr4__) && !defined(__aix__)
+		openlog(__progname, LOG_PID|syslog_perror, LOG_USER);
+#else
+		openlog(__progname, LOG_PID, LOG_USER);
+#endif
+
 	/* 
 	 * Check, and get the read port (write port + 1);
 	 * then construct port-forwarding arguments for ssh.
 	 */
 	wp = strtoul(writep, &s, 0);
+	if (*writep == '\0' || *s != '\0')
+		xerrlog(LOG_ERR, "invalid port \"%s\"", writep);
 	if (wp == 0) {
 		errlog(LOG_INFO, "port set to 0, monitoring disabled");
 		writep = NULL;
 	}
-	else if (*s != '\0')
-		xerrlog(LOG_ERR, "invalid port \"%s\"", writep);
 	else if (wp > 65534 || wp < 0)
-		xerrlog(LOG_ERR, "monitor ports (%d,%d) out of range",wp,rp);
+		xerrlog(LOG_ERR, "monitor port (%d) out of range",wp);
 	else {
 		rp = wp+1;
 		/* all this for solaris; we could use asprintf() */
@@ -241,18 +265,31 @@ main(int argc, char **argv)
 			    "overflow building forwarding string");
 	}
 
-	if (logtype & L_SYSLOG)
-#if !defined(__svr4__) && !defined(__aix__)
-		openlog(__progname, LOG_PID|syslog_perror, LOG_USER);
-#else
-		openlog(__progname, LOG_PID, LOG_USER);
-#endif
+	/* 
+	 * Adjust timeouts if necessary: net_timeout is first
+	 * the timeout for accept and then for io, so if the 
+	 * poll_time is set less than 2 timeouts, the timeouts need 
+	 * to be adjusted to be at least 1/2. Perhaps there should be
+	 * be some padding here as well....
+	 */
+	if ((poll_time * 1000) / 2 < net_timeout) {
+		net_timeout = (poll_time * 1000) / 2;
+		errlog(LOG_INFO,
+		    "short poll time: adjusting net timeouts to %d\n",
+		    net_timeout);
+	}
 
 	/*
 	 * Build a new arg list, skipping -f, -M and inserting 
 	 * port forwards.
 	 */
 	add_arg(ssh_path);
+
+#if defined(__CYGWIN__)
+	if (ntservice && !sawoptionn)
+		add_arg("-N");
+#endif
+
 	for (i = 1; i < argc; i++) {
  		if (env_port && !done_fwds) {
 			add_arg("-L");
@@ -285,7 +322,7 @@ main(int argc, char **argv)
 	if (writep) {
 		sock = conn_listen(mhost, readp);
 		/* set close-on-exec */
-		(void)fcntl(sock, F_SETFD, 1);
+		(void)fcntl(sock, F_SETFD, FD_CLOEXEC);
 	}
 
 	if (runasdaemon) {
@@ -297,8 +334,10 @@ main(int argc, char **argv)
 
 	ssh_run(sock, newav);
 
-	shutdown(sock, SHUT_RDWR);
-	close(sock);
+	if (sock != -1) {
+		shutdown(sock, SHUT_RDWR);
+		close(sock);
+	}
 
 	if (logtype & L_SYSLOG)
 		closelog();
@@ -381,35 +420,56 @@ get_env_args(void)
 		loglevel = LOG_DEBUG;
 	} else if ((s = getenv("AUTOSSH_LOGLEVEL")) != NULL) {
 		loglevel = strtoul(s, &t, 0);
-		if (*t != '\0' ||
+		if (*s == '\0' || *t != '\0' ||
 		    loglevel < LOG_EMERG || loglevel > LOG_DEBUG)
 			xerrlog(LOG_ERR, "invalid log level \"%s\"", s);
 	}
 
+	if ((s = getenv("AUTOSSH_POLL")) != NULL) {
+		poll_time = strtoul(s, &t, 0);
+		if (*s == '\0' || poll_time == 0 || *t != '\0' )
+			xerrlog(LOG_ERR, 
+			    "invalid poll time \"%s\"", s);
+		if (poll_time <= 0)
+			poll_time = POLL_TIME;
+	}
+
+	if ((s = getenv("AUTOSSH_GATETIME")) != NULL) {
+		gate_time = (double)strtol(s, &t, 0);
+		if (*s == '\0' || gate_time < 0 || *t != '\0' )
+			xerrlog(LOG_ERR, "invalid gate time \"%s\"", s);
+	}
+
+	if ((s = getenv("AUTOSSH_MAXSTART")) != NULL) {
+		max_start = (int)strtol(s, &t, 0);
+		if (*s == '\0' || *t != '\0' )
+			xerrlog(LOG_ERR, "invalid max start number \"%s\"", s);
+	}
+
+	if ((s = getenv("AUTOSSH_PORT")) != NULL)
+		if (*s != '\0')
+			env_port = s;
+
+#if defined(__CYGWIN__)
+	if ((s = getenv("AUTOSSH_NTSERVICE")) != NULL) {
+		if (*s != '\0' && strncasecmp("yes", s, strlen(s)) == 0) {
+			ntservice = 1;
+			logtype = L_FILELOG;
+			flog = stdout;
+		}
+	}
+#endif
+
+	/* 
+	 * Look for this after nt service; in case we may wish to log
+	 * elsewhere than stdout when running under cygrunsrv.
+	 */
 	if ((s = getenv("AUTOSSH_LOGFILE")) != NULL) {
 		flog = fopen(s, "a");
 		if (!flog)
 			xerrlog(LOG_ERR, "%s: %s", s, strerror(errno));
 		logtype = L_FILELOG;
 	}
-
-	if ((s = getenv("AUTOSSH_POLL")) != NULL) {
-		poll_time = strtoul(s, &t, 0);
-		if (poll_time == 0 || *t != '\0' )
-			xerrlog(LOG_ERR, 
-			    "invalid poll time \"%s\"", s);
-		if (poll_time <= 0)
-			poll_time = POLL_TIME; 
-	}
-
-	if ((s = getenv("AUTOSSH_GATETIME")) != NULL) {
-		gate_time = (double)strtoul(s, &t, 0);
-		if (gate_time < 0 || *t != '\0' )
-			xerrlog(LOG_ERR, "invalid gate time \"%s\"", s);
-	}		
-
-	if ((s = getenv("AUTOSSH_PORT")) != NULL)
-		env_port = s;
 
 	return;
 }
@@ -444,12 +504,16 @@ ssh_run(int sock, char **av)
 	gettimeofday(&tv, NULL);
 	srandom(getpid() ^ tv.tv_usec ^ tv.tv_sec);
 
-	while (1) {
+	while (max_start < 0 || start_count < max_start) {
 		start_count++;
 		grace_time(start_time);
 		time(&start_time);
-		errlog(LOG_INFO, "starting ssh (count %d)", 
-		   start_count);
+		if (max_start < 0)
+			errlog(LOG_INFO, "starting ssh (count %d)", 
+			   start_count);
+		else
+			errlog(LOG_INFO, "starting ssh (count %d of %d)", 
+			   start_count, max_start);
 		cchild = fork();
 		switch (cchild) {
 		case 0:
@@ -472,6 +536,7 @@ ssh_run(int sock, char **av)
 		}
 	}
 
+	errlog(LOG_INFO, "max start count reached; exiting"); 
 }
 
 /*
@@ -505,12 +570,13 @@ ssh_watch(int sock)
 			}
 
 			secs_left = alarm(0);
+			if (secs_left == 0)
+				secs_left = poll_time;
 
 			errlog(LOG_DEBUG, 
-			    "set alarm for %d secs", 
-			     poll_time - secs_left);
+			    "set alarm for %d secs", secs_left);
 
-			alarm(poll_time - secs_left);
+			alarm(secs_left);
 			dolongjmp = 1;
 			pause();
 
@@ -527,7 +593,7 @@ ssh_watch(int sock)
 				return P_EXIT;
 				break;
 			case SIGALRM:
-				if (writep &&
+				if (writep && sock != -1 &&
 				    !conn_test(sock, mhost, writep)) {
 					errlog(LOG_INFO, 
 					    "port down, restarting ssh");
@@ -652,6 +718,11 @@ ssh_wait(int options) {
 				}
 				/* FALLTHROUGH */
 			case 0:  /* exited on success */
+#if defined(__CYGWIN__)
+				if (ntservice)
+					return P_RESTART;
+				/* FALLTHROUGH */
+#endif
 			default: /* remote command error status */
 				errlog(LOG_INFO,
 				    "ssh exited with status %d; %s exiting",
@@ -683,9 +754,15 @@ ssh_kill(void)
 		/* if (kill(cchild, 0) != -1)
 		 +	kill(cchild, SIGKILL);
 		 */
-		if ((w = waitpid(cchild, &status, 0)) <= 0) {
+		do {
+			errno = 0;
+			w = waitpid(cchild, &status, 0);
+		} while (w < 0 && errno == EINTR );
+
+		if (w <= 0) {
 			errlog(LOG_ERR, 
-			    "waitpid() not successful, returned %d", w);
+			    "waitpid() not successful: %s", 
+			    strerror(errno));
 		}
 	}
 	return;
@@ -732,7 +809,7 @@ grace_time(time_t last_start)
 
 	if (tries > 5) {
 		t = (double)(tries - 5);
-		n = (int)(poll_time / 100) * (t * (t/3));
+		n = (int)(poll_time / 100.0) * (t * (t/3));
 		interval = (n > poll_time) ? poll_time : n;
 		if (interval) {
 			errlog(LOG_DEBUG, 
@@ -785,8 +862,8 @@ conn_test(int sock, char *host, char *write_port)
 	rval = 0;			/* default return value */
 	tries = 0;			/* number of attempts */
 
-	timeo_polla  = TIMEO_POLLA;	/* timeout value for accept() */
-	timeo_pollio = TIMEO_POLLIO;	/* timeout value for net io */
+	timeo_polla  = net_timeout;	/* timeout value for accept() */
+	timeo_pollio = net_timeout;	/* timeout value for net io */
 
 	id = random();
 
@@ -944,6 +1021,90 @@ abort_test:
 	return rval;
 }
 
+#ifdef HAVE_NO_ADDRINFO
+
+/*
+ * Convert names to addresses, setup for connection.
+ */
+void
+conn_addr(char *host, char *port, struct sockaddr_in *resp)
+{
+	struct hostent *h;
+
+	if ((h = gethostbyname(host)) == NULL)
+		xerrlog(LOG_ERR, "%s: %s", host, hstrerror(h_errno));
+
+	resp->sin_family = h->h_addrtype;
+	resp->sin_port = htons(atoi(port));
+	resp->sin_addr = *((struct in_addr *) h->h_addr_list[0]);
+
+	free(h);
+	return;
+}
+
+/*
+ * Open connection we're writing to.
+ */
+int
+conn_remote(char *host, char *port)
+{
+	int	sock;
+	static struct sockaddr_in res = {AF_UNSPEC};
+
+	/* Cache the address info */
+	if (res.sin_family == AF_UNSPEC)
+		conn_addr(host, port, &res);
+
+	if ((sock = socket(res.sin_family, SOCK_STREAM, 0)) == -1)
+		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
+
+	if (connect(sock, (struct sockaddr *) &res, sizeof(res)) == -1) {
+		errlog(LOG_INFO, "%s:%s: %s", host, port, strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	return sock;
+}
+
+/*
+ * Returns a socket listening on a local port, bound to specified source
+ * address. Errors in binding to the local listening port are fatal.
+ */
+int
+conn_listen(char *host,  char *port)
+{
+	int sock;
+	struct sockaddr_in res;
+	int on = 1;
+
+	/* 
+	 * Unlike conn_remote, we don't need to cache the 
+	 * info; we're only calling once at start. All errors
+	 * here are fatal.
+	 */
+	conn_addr(host, port, &res);
+
+	if ((sock = socket(res.sin_family, SOCK_STREAM, 0)) == -1)
+		xerrlog(LOG_ERR, "socket: %s", strerror(errno));
+
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
+	    (char *) &on, sizeof on) != 0) {
+		xerrlog(LOG_ERR, "setsockopt: %s", strerror(errno));
+	}
+
+	if (bind(sock, (struct sockaddr *)&res, sizeof(res)) == -1)
+		xerrlog(LOG_ERR, "bind on %s:%s: %s", 
+		    host, port, strerror(errno));
+
+	if (listen(sock, 1) < 0)
+		xerrlog(LOG_ERR, "listen: %s", strerror(errno));
+
+	return sock;
+}
+
+#else
+
 /*
  * Convert names to addresses, setup for connection.
  */
@@ -1002,7 +1163,7 @@ conn_remote(char *host, char *port)
 }
 
 /*
- * Return's a socket listening on a local port, binds to specified source
+ * Returns a socket listening on a local port, bound to specified source
  * address. Errors in binding to the local listening port are fatal.
  */
 int
@@ -1040,6 +1201,7 @@ conn_listen(char *host,  char *port)
 
 	return sock;
 }
+#endif
 
 /*
  * Nicely formatted time string for logging

@@ -1,5 +1,5 @@
 
-autossh Version 1.2f
+autossh Version 1.2g
 --------------------
 
 Building and Installing Autossh
@@ -13,8 +13,10 @@ Select the makefile that matches your system:
        Makefile.bsd	 - OpenBSD, FreeBSD, NetBSD
        Makefile.linux	 - Linux
        Makefile.solaris	 - Solaris
+       Makefile.solaris9 - Solaris >= 9 (native ssh)
        Makefile.apple    - MacOS X (aka Darwin)
        Makefile.aix      - AIX >= 4.3
+       Makefile.cygwin   - Cygwin environment for Windows
 
 You should check that SSH in the Makefile points to the location
 of the ssh binary on your system. Then run make with the appropriate 
@@ -27,6 +29,10 @@ Copy the resulting autossh binary to where you'd like it. Use
      make -f Makefile.bsd allclean
 
 to clean up after.
+
+If you get errors about getaddrinfo and such not being defined, you may 
+define HAVE_NO_ADDRINFO (see Makefile.cygwin for example). This will be 
+necessary for some older systems such as Solaris 2.6.
 
 Look at autossh.host for an example wrapper script.
 
@@ -147,6 +153,10 @@ The following environment variables can be set:
     AUTOSSH_PATH	  - path to the ssh executable, in case
 			    it is different than that compiled in.
     AUTOSSH_POLL	  - poll time in seconds; default is 600.
+			    If the poll time is less than twice the 
+			    network timeouts (default 15 seconds) the 
+			    network timeouts will be adjusted downward 
+			    to 1/2 the poll time.
     AUTOSSH_LOGLEVEL	  - log level, they correspond to the levels 
 			    used by syslog; so 0-7 with 7 being the
 			    chattiest.
@@ -164,6 +174,14 @@ The following environment variables can be set:
 			    seconds. If set to 0, then this behaviour
 			    is disabled, and as well, autossh will retry
 			    even on failure of first attempt to run ssh.
+    AUTOSSH_MAXSTART	  - Specifies how many times ssh should be started.
+			    A negative number means no limit on the number 
+			    of times ssh is started. The default value is -1.
+    AUTOSSH_NTSERVICE     - When set to "yes" , setup autossh to run as an 
+			    NT service under cygrunsrv. This adds the -N flag
+			    for ssh if not already set, sets the log output 
+			    to stdout, and changes the behaviour on ssh exit 
+			    so that it will restart even on a normal exit.
 
 Logging and Syslog
 ------------------

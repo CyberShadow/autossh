@@ -17,9 +17,9 @@
 .\" (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 .\" THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 .\"
-.\" $Id: autossh.1,v 1.8 2004/02/19 17:35:06 harding Exp $
+.\" $Id: autossh.1,v 1.14 2004/07/20 17:04:23 harding Exp $
 .\"
-.Dd Jan 23, 2004
+.Dd Jul 20, 2004
 .Dt AUTOSSH 1
 .Os
 .Sh NAME
@@ -87,8 +87,8 @@ try,
 will assume that there is some problem with syntax or the connection 
 setup, and will exit rather than retrying;
 .It 2.
-There is now a "starting gate" time. If the first ssh process fails 
-within the first few seconds of being started, 
+There is a "starting gate" time. If the first ssh process fails within
+the first few seconds of being started,
 .Nm
 assumes that 
 it never made it "out of the starting gate", and exits. This is to handle
@@ -156,7 +156,7 @@ will only restart ssh upon ssh's exit.
 Causes autossh to drop to the background before running ssh. The 
 .Fl f 
 flag is stripped from arguments passed to ssh. Note that there is a crucial
-a difference between the
+a difference between
 .Fl f 
 with autossh, and
 .Fl f
@@ -179,10 +179,12 @@ Specifies the path to the ssh executable, in case it is
 different than the path compiled in.
 .It Ev AUTOSSH_POLL
 Specifies the connection poll time in seconds; default is 600 seconds.
+If the poll time is less than twice the network timeouts (default 15
+seconds) the network timeouts will be adjusted downward to 1/2 the
+poll time.
 .It Ev AUTOSSH_LOGLEVEL
-Specifies the log level, corresponding to the levels 
-used by syslog; so 0-7 with 7 being the
-chattiest.
+Specifies the log level, corresponding to the levels used by syslog;
+so 0-7 with 7 being the chattiest.
 .It Ev AUTOSSH_LOGFILE
 Specifies that
 .Nm
@@ -199,9 +201,18 @@ monitoring function off.
 .It Ev AUTOSSH_GATETIME
 Specifies how long ssh must be up before we consider it a successful
 connection. The default is 30 seconds. Note that if AUTOSSH_GATETIME
-is set to 0, then not only is the gatetime behaviour turned off,
-but autossh also ignores the first run failure of ssh. This may be
-useful when running autossh at boot.
+is set to 0, then not only is the gatetime behaviour turned off, but
+autossh also ignores the first run failure of ssh. This may be useful
+when running autossh at boot.  
+.It Ev AUTOSSH_MAXSTART
+Specifies how many times ssh should be started. A negative number
+means no limit on the number of times ssh is started. The default
+value is -1.
+.It Ev AUTOSSH_NTSERVICE 
+(Cygwin only.) When set to "yes" , autossh sets up to run as an NT
+service under cygrunsrv. This adds the -N flag for ssh if not already
+set, sets the log output to stdout, and changes the behaviour on ssh
+exit so that it will restart even on a normal exit.
 .Sh AUTHOR
 .Nm
 was written by Carson Harding.
@@ -209,4 +220,5 @@ was written by Carson Harding.
 .Xr ssh 1 ,
 .Xr ssh-add 1 ,
 .Xr ssh-agent 1 ,
-.Xr ssh-keygen 1 .
+.Xr ssh-keygen 1 ,
+.Xr cygrunsrv 1 .
