@@ -4,7 +4,7 @@
  *
  * 	From the example of rstunnel.
  *
- * Copyright (c) Carson Harding, 2002,2003,2004.
+ * Copyright (c) Carson Harding, 2002,2003,2004,2005.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,7 +79,7 @@ char *__progname;
 #define u_int16_t uint16_t
 #endif
 
-const char *rcsid = "$Id: autossh.c,v 1.65 2005/03/23 01:47:01 harding Exp $";
+const char *rcsid = "$Id: autossh.c,v 1.72 2005/12/28 07:02:33 harding Exp $";
 
 #ifndef SSH_PATH
 #define SSH_PATH "/usr/bin/ssh"
@@ -169,7 +169,7 @@ void
 usage(int code)
 {
 	fprintf(code ? stderr : stdout,
-	    "usage: %s [-M monitor_port[:echo_port]] [-f] [SSH_OPTIONS]\n", 
+	    "usage: %s [-V] [-M monitor_port[:echo_port]] [-f] [SSH_OPTIONS]\n", 
 	    __progname);
 	if (code) {
 		fprintf(stderr, "\n");
@@ -185,6 +185,8 @@ usage(int code)
 		    "    -f run in background (autossh handles this, and"
 		    " does not\n"
 		    "       pass it to ssh.)\n");
+		fprintf(stderr, 
+		    "    -V print autossh version and exit.\n");
 		fprintf(stderr, "\n");
 		fprintf(stderr, "Environment variables are:\n");
 		fprintf(stderr, 
@@ -236,7 +238,7 @@ main(int argc, char **argv)
 	int	n;
 	int	ch;
 	char	*s;
-	int	wp, rp, ep;
+	int	wp, rp, ep = 0;
 	char	wmbuf[256], rmbuf[256];
 
 	int	sock = -1;
@@ -395,7 +397,7 @@ main(int argc, char **argv)
 				add_arg(rmbuf);
 			}
 			done_fwds = 1;
-		} else if (argv[i][0] == '-' && argv[i][1] == 'M') {
+		} else if (!sawargstop && argv[i][0] == '-' && argv[i][1] == 'M') {
 			if (argv[i][2] == '\0')
 				i++;
 			if (wp && !done_fwds) {
@@ -492,10 +494,11 @@ void
 strip_arg(char *arg, char ch, char *opts)
 {
 	char *f, *o;
+	size_t len;
+	
 
 	if (arg[0] == '-' && arg[1] != '\0') {
-		f = arg;
-		for (f = arg; *f != '\0'; f++) {
+		for (len = strlen(arg), f = arg; *f != '\0'; f++, len--) {
 			/* 
 			 * If f in option string and next char is ':' then
 			 * what follows is a parameter to the flag, and
@@ -510,7 +513,7 @@ strip_arg(char *arg, char ch, char *opts)
 					return; 
 			}
 			if (*f == ch)
-				(void)strcpy(f, f+1);
+				(void)memmove(f, f+1, len); 
 		}
 		/* left with "-" alone? then truncate */
 		if (arg[1] == '\0')
@@ -937,7 +940,7 @@ grace_time(time_t last_start)
 
 	if (tries > 5) {
 		t = (double)(tries - 5);
-		n = (int)(poll_time / 100.0) * (t * (t/3));
+		n = (int)((poll_time / 100.0) * (t * (t/3)));
 		interval = (n > poll_time) ? poll_time : n;
 		if (interval) {
 			errlog(LOG_DEBUG, 
